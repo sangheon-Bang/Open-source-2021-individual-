@@ -1,93 +1,90 @@
-package com.example.batteryalarm;
+package com.example.killapplication;
 
+import androidx.annotation.Nullable;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
-import android.content.ComponentName;
-import android.content.Intent;
-import android.content.IntentFilter;
+import android.app.TimePickerDialog;
 import android.content.Context;
-import android.content.ServiceConnection;
-import android.os.BatteryManager;
+import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.IBinder;
+import android.util.Log;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.CompoundButton;
-import android.widget.EditText;
-import android.widget.ListView;
-import android.widget.Spinner;
-import android.widget.Switch;
-import android.widget.Toast;
-import android.widget.TextView;
+import android.widget.TimePicker;
+
+import java.util.Calendar;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
-
-
-    static int bat_set;
-
+    Button alarmButton,smsButton;
+    int alarmHour, alarmMinute;
+    Calendar alarmCalendar;
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        TextView textView = findViewById(R.id.text1);
-        Switch switchButton = (Switch) findViewById(R.id.switch1);
+        alarmButton = (Button) findViewById(R.id.alarmButton);
+        smsButton = (Button) findViewById(R.id.SMSbutton);
 
-
-        final String[] battery_set = {"5","6","7","8","9","10","11","12","13","14","100"};
-
-
-       Spinner spinner = (Spinner) findViewById(R.id.spinner1);
-
-       ArrayAdapter<String> adapter;
-       adapter = new ArrayAdapter<String>(this,android.R.layout.simple_spinner_item,battery_set);
-       spinner.setAdapter(adapter);
-       spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){
-           @Override
-           public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
-               bat_set=Integer.parseInt(battery_set[i]);
-               textView.setText("배터리 잔량이"+bat_set+"% 미만이 될 시 알람이 울립니다.");
-           }
-
-           @Override
-           public void onNothingSelected(AdapterView<?> adapterView) {
-                textView.setText("배터리 잔량을 선택해주세요");
-           }
-       });
-
-
-       Intent alarmService = new Intent(getApplicationContext(),AlarmService.class);
-
-
-        switchButton.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener(){
+        alarmButton.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked){
-                if(isChecked){
-                    switchButton.setText("알람 활성화");
-                    startService(alarmService);
-                    textView.setText("배터리 잔량이"+bat_set+"% 미만이 될 시 알람이 울립니다.");
-                }
-                else{
-                    switchButton.setText("알람 비활성화");
-                    stopService(alarmService);
-                    textView.setText("배터리 잔량이"+bat_set+"% 미만이 될 시 알람이 울립니다.");
-                }
+            public void onClick(View v) {
+                TimePickerDialog timePickerDialog
+                        = new TimePickerDialog(MainActivity.this,android.R.style.Theme_Holo_Light_Dialog
+                        , new TimePickerDialog.OnTimeSetListener() {
+                    @RequiresApi(api = Build.VERSION_CODES.M)
+                    @Override
+                    public void onTimeSet(TimePicker view, int hourOfDay, int minute) {
+                        alarmHour = hourOfDay;
+                        alarmMinute = minute;
+                        setAlarm();
+                    }
+                },alarmHour, alarmMinute, false);
+                timePickerDialog.show();
             }
         });
 
-
-
+        smsButton.setOnClickListener(new View.OnClickListener(){
+            @Override
+            public void onClick(View v){
+                Intent intent = new Intent(MainActivity.this,SendSMS.class);
+                startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }
+        });
     }
 
-    public static int getBatSet(){
-        return bat_set;
-    }
 
 
+    void setAlarm() {
+        alarmCalendar = Calendar.getInstance();
+        alarmCalendar.setTimeInMillis(System.currentTimeMillis());
+        alarmCalendar.set(Calendar.HOUR_OF_DAY, alarmHour);
+        alarmCalendar.set(Calendar.MINUTE, alarmMinute);
+        alarmCalendar.set(Calendar.SECOND, 0);
+        // TimePickerDialog 에서 설정한 시간을 알람 시간으로 설정
+
+        if (alarmCalendar.before(Calendar.getInstance())) alarmCalendar.add(Calendar.DATE, 1);
+        // 알람 시간이 현재시간보다 빠를 때 하루 뒤로 맞춤
+        Intent alarmIntent = new Intent(getApplicationContext(), AlarmReceiver.class);
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        alarmIntent.setAction(AlarmReceiver.ACTION_RESTART_SERVICE);
+        PendingIntent alarmCallPendingIntent
+                = PendingIntent.getBroadcast
+                (MainActivity.this, 0, alarmIntent, PendingIntent.FLAG_UPDATE_CURRENT);
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            alarmManager.setExactAndAllowWhileIdle
+                    (AlarmManager.RTC_WAKEUP, alarmCalendar.getTimeInMillis(), alarmCallPendingIntent);
+        else if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT)
+            alarmManager.setExact
+                    (AlarmManager.RTC_WAKEUP, alarmCalendar.getTimeInMillis(), alarmCallPendingIntent);
+    } // 알람 설정
 }
